@@ -7,26 +7,252 @@ import re
 
 load_dotenv()
 
-st.title("🌽 University of Michigan API Assistant")
-st.write(
-    "This is a chatbot that connects to the University of Michigan's Maizey AI assistant. "
-    "Ask any questions and Maizey will help you with information about U-M!"
+# Configure page
+st.set_page_config(
+    page_title="Maizey AI Assistant",
+    page_icon="",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# Custom CSS for U-M styling
+st.markdown("""
+<style>
+    /* Import U-M colors and fonts */
+    :root {
+        --um-maize: #FFCB05;
+        --um-blue: #00274C;
+        --um-light-blue: #0066CC;
+        --um-gray: #F5F5F5;
+        --um-dark-gray: #333333;
+    }
+    
+    /* Hide default Streamlit styling */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Main container styling */
+    .main-header {
+        background: linear-gradient(135deg, var(--um-blue) 0%, var(--um-light-blue) 100%);
+        padding: 2rem 1rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0, 39, 76, 0.2);
+    }
+    
+    .main-header h1 {
+        color: var(--um-maize) !important;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .main-header p {
+        color: white !important;
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+        opacity: 0.9;
+    }
+    
+    /* Chat container styling */
+    .chat-container {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    
+    /* Button styling */
+    .stButton > button {
+        background: var(--um-maize);
+        color: var(--um-blue);
+        border: none;
+        border-radius: 25px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(255, 203, 5, 0.3);
+    }
+    
+    .stButton > button:hover {
+        background: #E6B800;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(255, 203, 5, 0.4);
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg {
+        background: var(--um-gray);
+    }
+    
+    .sidebar-header {
+        background: var(--um-blue);
+        color: var(--um-maize);
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        text-align: center;
+    }
+    
+    /* Status indicators */
+    .status-connected {
+        background: #28a745;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        display: inline-block;
+        font-size: 0.9rem;
+        margin: 0.5rem 0;
+    }
+    
+    .status-ready {
+        background: var(--um-light-blue);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        display: inline-block;
+        font-size: 0.9rem;
+        margin: 0.5rem 0;
+    }
+    
+    /* Quick action buttons */
+    .quick-action {
+        background: white;
+        border: 2px solid var(--um-blue);
+        color: var(--um-blue);
+        border-radius: 20px;
+        padding: 0.75rem 1rem;
+        margin: 0.25rem 0;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+    }
+    
+    .quick-action:hover {
+        background: var(--um-blue);
+        color: white;
+    }
+    
+    /* Capability cards */
+    .capability-card {
+        background: white;
+        border-left: 4px solid var(--um-maize);
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    /* Chat messages */
+    .chat-message {
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 15px;
+        background: var(--um-gray);
+    }
+    
+    .user-message {
+        background: var(--um-blue);
+        color: white;
+        margin-left: 20%;
+    }
+    
+    .assistant-message {
+        background: white;
+        border: 2px solid var(--um-maize);
+        margin-right: 20%;
+    }
+    
+    /* Input styling */
+    .stTextInput > div > div > input {
+        border-radius: 25px;
+        border: 2px solid var(--um-blue);
+        padding: 0.75rem 1.5rem;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: var(--um-maize);
+        box-shadow: 0 0 0 0.2rem rgba(255, 203, 5, 0.25);
+    }
+    
+    /* Spinner styling */
+    .stSpinner > div {
+        border-top-color: var(--um-maize) !important;
+    }
+    
+    /* Expander styling */
+    .streamlit-expanderHeader {
+        background: var(--um-blue);
+        color: var(--um-maize);
+        border-radius: 10px;
+    }
+    
+    /* Code blocks */
+    .stCodeBlock {
+        border-radius: 10px;
+        border: 1px solid var(--um-maize);
+    }
+    
+    /* Success/Error messages */
+    .stSuccess {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+        border-radius: 10px;
+    }
+    
+    .stError {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+        border-radius: 10px;
+    }
+    
+    /* University branding */
+    .um-logo {
+        width: 40px;
+        height: 40px;
+        background: var(--um-maize);
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: var(--um-blue);
+        margin-right: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Main header with U-M branding
+st.markdown("""
+<div class="main-header">
+    <h1> Maizey AI Assistant</h1>
+    <p>Your University of Michigan API companion</p>
+</div>
+""", unsafe_allow_html=True)
+
+# API Configuration
 url = 'https://umgpt.umich.edu'
 project_pk = os.getenv("PROJECT_PK")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
+# Error handling for missing credentials
 if not ACCESS_TOKEN:
-    st.error("❌ 'ACCESS_TOKEN' not found in environment variables. Please check your .env file.")
-    st.info("💡 Your .env file should contain: ACCESS_TOKEN=your_maizey_api_token_here")
+    st.error("🚫 **ACCESS_TOKEN** not found in environment variables")
+    st.info("💡 Add to your .env file: `ACCESS_TOKEN=your_maizey_api_token_here`")
     st.stop()
 
 if not project_pk:
-    st.error("❌ 'PROJECT_PK' not found in environment variables. Please check your .env file.")
-    st.info("💡 Your .env file should contain: PROJECT_PK=your_project_guid_here")
+    st.error("🚫 **PROJECT_PK** not found in environment variables")
+    st.info("💡 Add to your .env file: `PROJECT_PK=your_project_guid_here`")
     st.stop()
 
+# Session state initialization
 if "conversation_pk" not in st.session_state:
     st.session_state.conversation_pk = None
 
@@ -34,6 +260,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def create_conversation():
+    """Create a new conversation with Maizey"""
     headers = {
         'accept': 'application/json',
         'Authorization': 'Bearer ' + ACCESS_TOKEN,
@@ -50,7 +277,6 @@ def create_conversation():
             return conversation_data["pk"]
         else:
             st.error(f"❌ Failed to create conversation. Status: {response.status_code}")
-            st.error(f"Response: {response.text}")
             return None
             
     except Exception as e:
@@ -58,6 +284,7 @@ def create_conversation():
         return None
 
 def send_message_to_maizey(user_question):
+    """Send message to Maizey API"""
     if not st.session_state.conversation_pk:
         st.session_state.conversation_pk = create_conversation()
         if not st.session_state.conversation_pk:
@@ -80,12 +307,13 @@ def send_message_to_maizey(user_question):
             message_data = response.json()
             return message_data.get('response', 'Sorry, no response received.')
         else:
-            return f"❌ Failed to send message. Status: {response.status_code}\nResponse: {response.text}"
+            return f"❌ Failed to send message. Status: {response.status_code}"
             
     except Exception as e:
         return f"❌ Error sending message: {str(e)}"
 
 def format_maizey_response(response_text):
+    """Format Maizey response with code blocks"""
     parts = re.split(r'```(\w+)?\n(.*?)```', response_text, flags=re.DOTALL)
     
     formatted_parts = []
@@ -103,6 +331,7 @@ def format_maizey_response(response_text):
     return formatted_parts
 
 def display_formatted_response(response_text):
+    """Display formatted response with proper styling"""
     formatted_parts = format_maizey_response(response_text)
     
     i = 0
@@ -122,12 +351,10 @@ def display_formatted_response(response_text):
         
         i += 1
 
-def stream_response(text):
-    words = text.split()
-    for i, word in enumerate(words):
-        yield word + (" " if i < len(words) - 1 else "")
-        time.sleep(0.03)
+# Main chat interface
+st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
+# Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         if message["role"] == "assistant":
@@ -135,29 +362,43 @@ for message in st.session_state.messages:
         else:
             st.markdown(message["content"])
 
-if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
+# Chat input
+if prompt := st.chat_input("💬 Ask Maizey anything about University of Michigan..."):
+    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Get and display assistant response
     with st.chat_message("assistant"):
-        with st.spinner("Maizey is thinking..."):
+        with st.spinner(" Maizey is thinking..."):
             response = send_message_to_maizey(prompt)
-        
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
 
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Sidebar with U-M styling
 with st.sidebar:
-    st.header("🌽 Maizey AI Assistant")
+    st.markdown("""
+    <div class="sidebar-header">
+        <div class="um-logo">M</div>
+        <strong>Maizey AI Assistant</strong>
+    </div>
+    """, unsafe_allow_html=True)
     
+    # Connection Status
     if st.session_state.conversation_pk:
-        st.success("✅ Connected")
-        st.caption(f"Conv ID: {st.session_state.conversation_pk}...")
+        st.markdown('<div class="status-connected">✅ Connected to Maizey</div>', unsafe_allow_html=True)
+        st.caption(f"🔗 Conversation ID: {st.session_state.conversation_pk[:12]}...")
     else:
-        st.info("🆕 Ready to Connect")
+        st.markdown('<div class="status-ready">🆕 Ready to Connect</div>', unsafe_allow_html=True)
     
+    # Action buttons
+    st.markdown("### 🎯 Quick Actions")
     col1, col2 = st.columns(2)
+    
     with col1:
         if st.button("🔄 New Chat", use_container_width=True):
             st.session_state.messages = []
@@ -166,7 +407,7 @@ with st.sidebar:
     
     with col2:
         if st.button("🧪 Test API", use_container_width=True):
-            with st.spinner("Testing..."):
+            with st.spinner("Testing connection..."):
                 test_headers = {
                     'accept': 'application/json',
                     'Authorization': 'Bearer ' + ACCESS_TOKEN,
@@ -177,57 +418,74 @@ with st.sidebar:
                 try:
                     test_response = requests.post(test_url, headers=test_headers, json={})
                     if test_response.status_code == 201:
-                        st.success("✅ API Connected")
+                        st.success("✅ API Connected Successfully")
                     else:
-                        st.error(f"❌ Status: {test_response.status_code}")
+                        st.error(f"❌ Connection Failed: {test_response.status_code}")
                 except Exception as e:
-                    st.error(f"❌ Connection Failed")
+                    st.error("❌ Network Error - Check connection")
     
     st.divider()
     
-    st.subheader("🔧 Configuration")
-    with st.expander("Connection Details"):
-        st.text(f"Endpoint: umgpt.umich.edu")
-        st.text(f"Project: {project_pk[:12]}...")
-        st.text(f"Token: {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}")
-        st.text(f"Status: {'🟢 Active' if st.session_state.conversation_pk else '🟡 Standby'}")
+    # Configuration Details
+    st.markdown("### 🔧 System Configuration")
+    with st.expander("🔍 Connection Details", expanded=False):
+        st.markdown(f"""
+        **🌐 Endpoint:** `umgpt.umich.edu`  
+        **📁 Project:** `{project_pk[:12]}...`  
+        **🔑 Token:** {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}  
+        **📊 Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else '🟡 Standby'}
+        """)
     
     st.divider()
     
-    st.subheader("💡 Maizey Capabilities")
+    # Maizey Capabilities
+    st.markdown("### 💡 Maizey Capabilities")
     capabilities = [
-        "🔍 Student & Faculty Search",
-        "🏢 Building & Room Info", 
+        "🔍 Student & Faculty Directory",
+        "🏢 Building & Room Information", 
         "📚 Course Data & Enrollment",
         "🔗 API Endpoint Generation",
-        "💻 Code Examples (Python/JS)",
-        "📄 Documentation & Guides"
+        "💻 Code Examples & Documentation",
+        "📋 University Policies & Procedures"
     ]
     
     for capability in capabilities:
-        st.markdown(f"• {capability}")
+        st.markdown(f"""
+        <div class="capability-card">
+            {capability}
+        </div>
+        """, unsafe_allow_html=True)
     
     st.divider()
     
-    st.subheader("🎯 Quick Examples")
+    # Quick Examples
+    st.markdown("### 🚀 Try These Examples")
     examples = [
-        "Get student info by uniqname",
-        "Find rooms in Shapiro building", 
-        "Course enrollment API",
+        "Find student info by uniqname",
+        "List rooms in Shapiro Library", 
+        "Course enrollment API example",
         "Faculty directory search",
-        "Building capacity data"
+        "Building capacity information",
+        "Campus dining hours",
+        "Library study spaces"
     ]
     
     for example in examples:
-        if st.button(f"� {example}", key=f"ex_{hash(example)}", use_container_width=True):
+        if st.button(f"💡 {example}", key=f"ex_{hash(example)}", use_container_width=True):
             st.session_state.messages.append({"role": "user", "content": example})
-            with st.chat_message("user"):
-                st.markdown(example)
             
-            with st.chat_message("assistant"):
-                with st.spinner("Maizey is thinking..."):
-                    response = send_message_to_maizey(example)
-                display_formatted_response(response)
+            with st.spinner(" Maizey is processing your request..."):
+                response = send_message_to_maizey(example)
             
             st.session_state.messages.append({"role": "assistant", "content": response})
             st.rerun()
+    
+    st.divider()
+    
+    # Footer
+    st.markdown("""
+    <div style="text-align: center; margin-top: 2rem; padding: 1rem; background: var(--um-blue); color: var(--um-maize); border-radius: 10px;">
+        <strong>Go Blue!</strong><br>
+        <small>University of Michigan<br>Powered by Maizey AI</small>
+    </div>
+    """, unsafe_allow_html=True)
