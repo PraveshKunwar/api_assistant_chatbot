@@ -6,7 +6,20 @@ from dotenv import load_dotenv
 import re
 import base64
 import streamlit.components.v1 as components
+import json
+import uuid
+from datetime import datetime
 
+# Redis 集成
+try:
+    from upstash_redis import Redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+def get_session_id():
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+    return st.session_state.session_id
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
@@ -14,6 +27,148 @@ def create_favicon():
     img = Image.open("umich.png")
     img = img.resize((32, 32)) 
     return img
+
+# Redis 函数
+def get_redis_client():
+    """Get Redis client"""
+    if not REDIS_AVAILABLE:
+        return None
+    
+    try:
+        redis_url = os.getenv('UPSTASH_REDIS_REST_URL')
+        redis_token = os.getenv('UPSTASH_REDIS_REST_TOKEN')
+        
+        if redis_url and redis_token:
+            return Redis(url=redis_url, token=redis_token)
+        else:
+            return None
+    except Exception as e:
+        return None
+
+def save_chat_to_redis(conversation_id, messages):
+    """Save chat history to Redis"""
+    if not conversation_id or not messages:
+        return
+        
+    redis_client = get_redis_client()
+    if not redis_client:
+        return
+    
+    try:
+        chat_data = {
+            'messages': messages,
+            'timestamp': datetime.now().isoformat(),
+            'conversation_id': conversation_id
+        }
+        redis_client.setex(
+            f"um_chat:{conversation_id}", 
+            604800, 
+            json.dumps(chat_data)
+        )
+    except Exception as e:
+        pass
+
+def load_chat_from_redis(conversation_id):
+    """Load chat history from Redis"""
+    if not conversation_id:
+        return []
+        
+    redis_client = get_redis_client()
+    if not redis_client:
+        return []
+    
+    try:
+        data = redis_client.get(f"um_chat:{conversation_id}")
+        if data:
+            chat_data = json.loads(data)
+            return chat_data.get('messages', [])
+        return []
+    except Exception as e:
+        return []
+
+def get_session_id():
+    """Get or create session ID"""
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+    return st.session_state.session_id
+
+def get_chat_history_list():
+    """Get all chat history list"""
+    redis_client = get_redis_client()
+    if not redis_client:
+        return []
+    
+    try:
+        # Get all chat record keys
+        keys = redis_client.keys("um_chat:*")
+        chat_list = []
+        
+        for key in keys:
+            try:
+                data = redis_client.get(key)
+                if data:
+                    chat_data = json.loads(data)
+                    # Extract basic info
+                    session_id = key.replace("um_chat:", "")
+                    timestamp = chat_data.get('timestamp', '')
+                    messages = chat_data.get('messages', [])
+                    
+                    if messages:
+                        # Get first user message as title
+                        first_user_msg = next((msg['content'] for msg in messages if msg['role'] == 'user'), 'New Chat')
+                        title = first_user_msg[:50] + "..." if len(first_user_msg) > 50 else first_user_msg
+                        
+                        chat_list.append({
+                            'session_id': session_id,
+                            'title': title,
+                            'timestamp': timestamp,
+                            'message_count': len(messages)
+                        })
+            except:
+                continue
+        
+        # Sort by time (newest first)
+        chat_list.sort(key=lambda x: x['timestamp'], reverse=True)
+        return chat_list[:4]  # Return only recent 4
+    except Exception as e:
+        return []
+
+def load_chat_history(session_id):
+    """Load specific chat history"""
+    messages = load_chat_from_redis(session_id)
+    if messages:
+        st.session_state.messages = messages
+        st.session_state.session_id = session_id
+        st.rerun()
+
+def clear_all_chat_history():
+    """Clear all chat history from Redis"""
+    redis_client = get_redis_client()
+    if not redis_client:
+        return False
+    
+    try:
+        # Get all chat record keys
+        keys = redis_client.keys("um_chat:*")
+        if keys:
+            # Delete all chat records
+            for key in keys:
+                redis_client.delete(key)
+        return True
+    except Exception as e:
+        return False
+
+def delete_specific_chat(session_id):
+    """Delete specific chat history"""
+    redis_client = get_redis_client()
+    if not redis_client:
+        return False
+    
+    try:
+        redis_client.delete(f"um_chat:{session_id}")
+        return True
+    except Exception as e:
+        return False
     
 load_dotenv()
 
@@ -264,6 +419,7 @@ if not project_pk:
 if "conversation_pk" not in st.session_state:
     st.session_state.conversation_pk = None
 
+# Initialize message history (always start blank)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -394,6 +550,9 @@ if 'auto_input' in st.session_state:
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # Save to Redis
+    save_chat_to_redis(get_session_id(), st.session_state.messages)
 
 if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -407,27 +566,37 @@ if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # Save to Redis
+    save_chat_to_redis(get_session_id(), st.session_state.messages)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar with U-M styling
 with st.sidebar:
     umich_icon = get_base64_image("umich.png")
-    # st.markdown(f"""
-    # <div class="sidebar-header">
-    #     <img src="data:image/png;base64,{umich_icon}" width="30" height="30" style="vertical-align: middle; margin-right: 10px;">
-    #     <strong>Maizey API Assistant!</strong>
-    # </div>
-    # """, unsafe_allow_html=True)
+    
+    redis_client = get_redis_client()
     
     # Connection Status
     if st.session_state.conversation_pk:
         # st.caption(f" Conversation ID: {str(st.session_state.conversation_pk)[:12]}...")
         st.markdown('<div class="status-connected"> Connected to Maizey</div>', unsafe_allow_html=True)
         
-    # else:
-    #     st.markdown('<div class="status-ready"> Start a Conversation</div>', unsafe_allow_html=True)
+    st.markdown("### System Configuration")
+    with st.expander(" Connection Details", expanded=False):
+        st.markdown(f"""
+        **Endpoint:** `umgpt.umich.edu`  
+        **Project:** `{project_pk[:12]}...`  
+        **Token:** {' Valid' if ACCESS_TOKEN else 'Missing'}  
+        **Status:** {' Active Chat' if st.session_state.conversation_pk else 'Standby'}  
+        **Storage:** {'Redis' if redis_client else '💾 Session'}
+        """)
+        
+        if st.session_state.conversation_pk:
+            st.markdown(f"** Conversation ID:** `{str(st.session_state.conversation_pk)}`")
     
+    st.divider()
     # Action buttons
     st.markdown("###  Quick Actions")
     col1, col2 = st.columns(2)
@@ -436,6 +605,7 @@ with st.sidebar:
         if st.button(" New Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.conversation_pk = None
+            st.session_state.session_id = str(uuid.uuid4())  # New session ID
             st.rerun()
     
     with col2:
@@ -457,20 +627,47 @@ with st.sidebar:
                 except Exception as e:
                     st.toast(f"Connection Failed")
     
-    st.divider()
     
-    # Configuration Details
-    st.markdown("### System Configuration")
-    with st.expander(" Connection Details", expanded=False):
-        st.markdown(f"""
-        **Endpoint:** `umgpt.umich.edu`  
-        **Project:** `{project_pk[:12]}...`  
-        **Token:** {' Valid' if ACCESS_TOKEN else 'Missing'}  
-        **Status:** {' Active Chat' if st.session_state.conversation_pk else 'Standby'}
-        """)
+    # Chat History Section
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown("### Chat History")
+    with col2:
+        if redis_client and get_chat_history_list():
+            if st.button("🗑️", help = "Clear all", use_container_width=True, type="secondary"):
+                if clear_all_chat_history():
+                    st.toast("✅ All chat history cleared!")
+                    st.rerun()
+                else:
+                    st.toast("❌ Failed to clear history")
+    
+    if redis_client:
+        chat_history = get_chat_history_list()
         
-        if st.session_state.conversation_pk:
-            st.markdown(f"**🔗 Conversation ID:** `{str(st.session_state.conversation_pk)}`")
+        if chat_history:
+            for chat in chat_history:
+                # Create compact chat history items
+                chat_time = datetime.fromisoformat(chat['timestamp']).strftime("%m/%d")
+                
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    # Use smaller, more compact button style
+                    button_text = f"{chat['title'][:20]}{'...' if len(chat['title']) > 20 else ''}"
+                    if st.button(button_text, key=f"history_{chat['session_id']}", use_container_width=True, type="secondary"):
+                        load_chat_history(chat['session_id'])
+                
+                with col2:
+                    with st.popover("⋯", use_container_width=True):
+                        if st.button("Delete", key=f"delete_{chat['session_id']}", use_container_width=True, type="secondary"):
+                            if delete_specific_chat(chat['session_id']):
+                                st.toast("Chat deleted!")
+                                st.rerun()
+                            else:
+                                st.toast("Failed to delete")
+        else:
+            st.caption("No chat history yet")
+    else:
+        st.caption("Cloud storage not available")
     
     st.divider()
     
