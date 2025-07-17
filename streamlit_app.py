@@ -2,7 +2,6 @@ import streamlit as st
 import requests
 import os
 from dotenv import load_dotenv
-import time
 import re
 
 load_dotenv()
@@ -10,7 +9,7 @@ load_dotenv()
 # Configure page
 st.set_page_config(
     page_title="Maizey AI Assistant",
-    page_icon="",
+    page_icon="〽️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -30,7 +29,7 @@ st.markdown("""
     /* Hide default Streamlit styling */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    .stApp > header {visibility: hidden;}
     
     /* Main container styling */
     .main-header {
@@ -59,7 +58,7 @@ st.markdown("""
     
     /* Chat container styling */
     .chat-container {
-        background: white;
+        background: white;    
         border-radius: 15px;
         padding: 1.5rem;
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
@@ -231,8 +230,7 @@ st.markdown("""
 # Main header with U-M branding
 st.markdown("""
 <div class="main-header">
-    <h1> Maizey AI Assistant</h1>
-    <p>Your University of Michigan API companion</p>
+    <h1>〽️ Maizey AI Assistant</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -241,18 +239,16 @@ url = 'https://umgpt.umich.edu'
 project_pk = os.getenv("PROJECT_PK")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 
-# Error handling for missing credentials
 if not ACCESS_TOKEN:
-    st.error("🚫 **ACCESS_TOKEN** not found in environment variables")
-    st.info("💡 Add to your .env file: `ACCESS_TOKEN=your_maizey_api_token_here`")
+    st.error("🔴 **ACCESS_TOKEN** not found in environment variables")
+    st.info(" Add to your .env file: `ACCESS_TOKEN=your_maizey_api_token_here`")
     st.stop()
 
 if not project_pk:
-    st.error("🚫 **PROJECT_PK** not found in environment variables")
-    st.info("💡 Add to your .env file: `PROJECT_PK=your_project_guid_here`")
+    st.error("🔴 **PROJECT_PK** not found in environment variables")
+    st.info(" Add to your .env file: `PROJECT_PK=your_project_guid_here`")
     st.stop()
 
-# Session state initialization
 if "conversation_pk" not in st.session_state:
     st.session_state.conversation_pk = None
 
@@ -260,7 +256,6 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def create_conversation():
-    """Create a new conversation with Maizey"""
     headers = {
         'accept': 'application/json',
         'Authorization': 'Bearer ' + ACCESS_TOKEN,
@@ -276,19 +271,19 @@ def create_conversation():
             conversation_data = response.json()
             return conversation_data["pk"]
         else:
-            st.error(f"❌ Failed to create conversation. Status: {response.status_code}")
+            st.error(f"🔴 Failed to create conversation. Status: {response.status_code}")
+            st.error(f"Response: {response.text}")
             return None
             
     except Exception as e:
-        st.error(f"❌ Error creating conversation: {str(e)}")
+        st.error(f"🔴 Error creating conversation: {str(e)}")
         return None
 
 def send_message_to_maizey(user_question):
-    """Send message to Maizey API"""
     if not st.session_state.conversation_pk:
         st.session_state.conversation_pk = create_conversation()
         if not st.session_state.conversation_pk:
-            return "❌ Could not start conversation with Maizey. Please try again."
+            return "🔴 Could not start conversation with Maizey. Please try again."
     
     headers = {
         'accept': 'application/json',
@@ -307,13 +302,12 @@ def send_message_to_maizey(user_question):
             message_data = response.json()
             return message_data.get('response', 'Sorry, no response received.')
         else:
-            return f"❌ Failed to send message. Status: {response.status_code}"
+            return f"🔴 Failed to send message. Status: {response.status_code}\nResponse: {response.text}"
             
     except Exception as e:
-        return f"❌ Error sending message: {str(e)}"
+        return f"🔴 Error sending message: {str(e)}"
 
 def format_maizey_response(response_text):
-    """Format Maizey response with code blocks"""
     parts = re.split(r'```(\w+)?\n(.*?)```', response_text, flags=re.DOTALL)
     
     formatted_parts = []
@@ -331,7 +325,6 @@ def format_maizey_response(response_text):
     return formatted_parts
 
 def display_formatted_response(response_text):
-    """Display formatted response with proper styling"""
     formatted_parts = format_maizey_response(response_text)
     
     i = 0
@@ -362,17 +355,15 @@ for message in st.session_state.messages:
         else:
             st.markdown(message["content"])
 
-# Chat input
-if prompt := st.chat_input("💬 Ask Maizey anything about University of Michigan..."):
-    # Add user message
+if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Get and display assistant response
     with st.chat_message("assistant"):
-        with st.spinner(" Maizey is thinking..."):
+        with st.spinner("Maizey is thinking..."):
             response = send_message_to_maizey(prompt)
+        
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
@@ -390,13 +381,13 @@ with st.sidebar:
     
     # Connection Status
     if st.session_state.conversation_pk:
-        st.markdown('<div class="status-connected">✅ Connected to Maizey</div>', unsafe_allow_html=True)
-        st.caption(f"🔗 Conversation ID: {st.session_state.conversation_pk[:12]}...")
+        st.markdown('<div class="status-connected">🟢 Connected to Maizey</div>', unsafe_allow_html=True)
+        st.caption(f"🔗 Conversation ID: {str(st.session_state.conversation_pk)[:12]}...")
     else:
-        st.markdown('<div class="status-ready">🆕 Ready to Connect</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-ready">🟢 Ready to Connect</div>', unsafe_allow_html=True)
     
     # Action buttons
-    st.markdown("### 🎯 Quick Actions")
+    st.markdown("###  Quick Actions")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -418,11 +409,11 @@ with st.sidebar:
                 try:
                     test_response = requests.post(test_url, headers=test_headers, json={})
                     if test_response.status_code == 201:
-                        st.success("✅ API Connected Successfully")
+                        st.success("🟢 API Connected")
                     else:
-                        st.error(f"❌ Connection Failed: {test_response.status_code}")
+                        st.error(f"Status: {test_response.status_code}")
                 except Exception as e:
-                    st.error("❌ Network Error - Check connection")
+                    st.error(f"Connection Failed")
     
     st.divider()
     
@@ -430,23 +421,26 @@ with st.sidebar:
     st.markdown("### 🔧 System Configuration")
     with st.expander("🔍 Connection Details", expanded=False):
         st.markdown(f"""
-        **🌐 Endpoint:** `umgpt.umich.edu`  
-        **📁 Project:** `{project_pk[:12]}...`  
-        **🔑 Token:** {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}  
-        **📊 Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else '🟡 Standby'}
+        ** Endpoint:** `umgpt.umich.edu`  
+        ** Project:** `{project_pk[:12]}...`  
+        ** Token:** {'🟢 Valid' if ACCESS_TOKEN else 'Missing'}  
+        ** Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else 'Standby'}
         """)
+        
+        if st.session_state.conversation_pk:
+            st.markdown(f"**🔗 Conversation ID:** `{str(st.session_state.conversation_pk)}`")
     
     st.divider()
     
     # Maizey Capabilities
-    st.markdown("### 💡 Maizey Capabilities")
+    st.markdown("### Maizey Capabilities")
     capabilities = [
-        "🔍 Student & Faculty Directory",
-        "🏢 Building & Room Information", 
-        "📚 Course Data & Enrollment",
-        "🔗 API Endpoint Generation",
-        "💻 Code Examples & Documentation",
-        "📋 University Policies & Procedures"
+        "Student & Faculty Directory",
+        "Building & Room Information", 
+        "Course Data & Enrollment",
+        "API Endpoint Generation",
+        "Code Examples & Documentation",
+        "University Policies & Procedures"
     ]
     
     for capability in capabilities:
@@ -459,7 +453,7 @@ with st.sidebar:
     st.divider()
     
     # Quick Examples
-    st.markdown("### 🚀 Try These Examples")
+    st.markdown("### Try These Examples")
     examples = [
         "Find student info by uniqname",
         "List rooms in Shapiro Library", 
@@ -471,10 +465,10 @@ with st.sidebar:
     ]
     
     for example in examples:
-        if st.button(f"💡 {example}", key=f"ex_{hash(example)}", use_container_width=True):
+        if st.button(f" {example}", key=f"ex_{hash(example)}", use_container_width=True):
             st.session_state.messages.append({"role": "user", "content": example})
             
-            with st.spinner(" Maizey is processing your request..."):
+            with st.spinner("〽️ Maizey is processing your request..."):
                 response = send_message_to_maizey(example)
             
             st.session_state.messages.append({"role": "assistant", "content": response})
@@ -485,7 +479,7 @@ with st.sidebar:
     # Footer
     st.markdown("""
     <div style="text-align: center; margin-top: 2rem; padding: 1rem; background: var(--um-blue); color: var(--um-maize); border-radius: 10px;">
-        <strong>Go Blue!</strong><br>
+        <strong>〽️ Go Blue!</strong><br>
         <small>University of Michigan<br>Powered by Maizey AI</small>
     </div>
     """, unsafe_allow_html=True)
