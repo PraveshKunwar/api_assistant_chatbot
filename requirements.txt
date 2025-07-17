@@ -1,8 +1,5 @@
 streamlit
 requests
 python-dotenv
-base64
-PIL
-#prone to remove
+Pillow
 redis
-upstash-redis

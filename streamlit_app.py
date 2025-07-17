@@ -10,43 +10,63 @@ import json
 import uuid
 from datetime import datetime
 
-# Redis 集成
 try:
-    from upstash_redis import Redis
+    import redis
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
+
+load_dotenv()
+
 def get_session_id():
     if 'session_id' not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
     return st.session_state.session_id
+
 def get_base64_image(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode()
+
 def create_favicon():
     img = Image.open("umich.png")
     img = img.resize((32, 32)) 
     return img
 
-# Redis 函数
 def get_redis_client():
-    """Get Redis client"""
     if not REDIS_AVAILABLE:
         return None
     
     try:
-        redis_url = os.getenv('UPSTASH_REDIS_REST_URL')
-        redis_token = os.getenv('UPSTASH_REDIS_REST_TOKEN')
-        
-        if redis_url and redis_token:
-            return Redis(url=redis_url, token=redis_token)
+        redis_url = os.getenv('REDIS_URL')
+        if redis_url:
+            return redis.Redis.from_url(redis_url)
         else:
             return None
     except Exception as e:
         return None
 
+def test_redis_connection():
+    redis_client = get_redis_client()
+    if not redis_client:
+        return False, "Redis client not available"
+    
+    try:
+        test_key = f"test_{uuid.uuid4()}"
+        redis_client.set(test_key, "test_value")
+        result = redis_client.get(test_key)
+        redis_client.delete(test_key)
+        
+        if isinstance(result, bytes):
+            result = result.decode('utf-8')
+        
+        if result == "test_value":
+            return True, "Redis connection successful"
+        else:
+            return False, "Redis test failed"
+    except Exception as e:
+        return False, f"Redis error: {str(e)}"
+
 def save_chat_to_redis(conversation_id, messages):
-    """Save chat history to Redis"""
     if not conversation_id or not messages:
         return
         
@@ -69,7 +89,6 @@ def save_chat_to_redis(conversation_id, messages):
         pass
 
 def load_chat_from_redis(conversation_id):
-    """Load chat history from Redis"""
     if not conversation_id:
         return []
         
@@ -80,41 +99,37 @@ def load_chat_from_redis(conversation_id):
     try:
         data = redis_client.get(f"um_chat:{conversation_id}")
         if data:
+            if isinstance(data, bytes):
+                data = data.decode('utf-8')
             chat_data = json.loads(data)
             return chat_data.get('messages', [])
         return []
     except Exception as e:
         return []
 
-def get_session_id():
-    """Get or create session ID"""
-    if 'session_id' not in st.session_state:
-        st.session_state.session_id = str(uuid.uuid4())
-    return st.session_state.session_id
-
 def get_chat_history_list():
-    """Get all chat history list"""
     redis_client = get_redis_client()
     if not redis_client:
         return []
     
     try:
-        # Get all chat record keys
         keys = redis_client.keys("um_chat:*")
         chat_list = []
         
         for key in keys:
             try:
+                if isinstance(key, bytes):
+                    key = key.decode('utf-8')
                 data = redis_client.get(key)
                 if data:
+                    if isinstance(data, bytes):
+                        data = data.decode('utf-8')
                     chat_data = json.loads(data)
-                    # Extract basic info
                     session_id = key.replace("um_chat:", "")
                     timestamp = chat_data.get('timestamp', '')
                     messages = chat_data.get('messages', [])
                     
                     if messages:
-                        # Get first user message as title
                         first_user_msg = next((msg['content'] for msg in messages if msg['role'] == 'user'), 'New Chat')
                         title = first_user_msg[:50] + "..." if len(first_user_msg) > 50 else first_user_msg
                         
@@ -127,31 +142,27 @@ def get_chat_history_list():
             except:
                 continue
         
-        # Sort by time (newest first)
         chat_list.sort(key=lambda x: x['timestamp'], reverse=True)
-        return chat_list[:4]  # Return only recent 4
+        return chat_list[:10]
     except Exception as e:
         return []
 
 def load_chat_history(session_id):
-    """Load specific chat history"""
     messages = load_chat_from_redis(session_id)
     if messages:
         st.session_state.messages = messages
         st.session_state.session_id = session_id
+        st.session_state.conversation_pk = None
         st.rerun()
 
 def clear_all_chat_history():
-    """Clear all chat history from Redis"""
     redis_client = get_redis_client()
     if not redis_client:
         return False
     
     try:
-        # Get all chat record keys
         keys = redis_client.keys("um_chat:*")
         if keys:
-            # Delete all chat records
             for key in keys:
                 redis_client.delete(key)
         return True
@@ -159,7 +170,6 @@ def clear_all_chat_history():
         return False
 
 def delete_specific_chat(session_id):
-    """Delete specific chat history"""
     redis_client = get_redis_client()
     if not redis_client:
         return False
@@ -169,10 +179,17 @@ def delete_specific_chat(session_id):
         return True
     except Exception as e:
         return False
-    
-load_dotenv()
 
-# Configure page
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+session_id = get_session_id()
+
+if not st.session_state.messages:
+    saved_messages = load_chat_from_redis(session_id)
+    if saved_messages:
+        st.session_state.messages = saved_messages
+
 st.set_page_config(
     page_title="UM API Assistant",
     page_icon=create_favicon(),
@@ -180,10 +197,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for U-M styling
 st.markdown("""
 <style>
-    /* Import U-M colors and fonts */
     :root {
         --um-maize: #FFCB05;
         --um-blue: #00274C;
@@ -192,12 +207,10 @@ st.markdown("""
         --um-dark-gray: #333333;
     }
     
-    /* Hide default Streamlit styling */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stApp > header {visibility: hidden;}
     
-    /* Main container styling */
     .main-header {
         background: var(--um-blue);
         padding: 0.1rem 2rem;
@@ -215,23 +228,6 @@ st.markdown("""
         text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
     
-    .main-header p {
-        color: white !important;
-        font-size: 1.1rem;
-        margin-top: 0.5rem;
-        opacity: 0.9;
-    }
-    
-    /* Chat container styling */
-    # .chat-container {
-    #     background: white;    
-    #     border-radius: 15px;
-    #     padding: 1.5rem;
-    #     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    #     margin-bottom: 2rem;
-    # }
-    
-    /* Button styling */
     .stButton > button {
         background: var(--um-maize);
         color: var(--um-blue);
@@ -251,21 +247,6 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(255, 203, 5, 0.4);
     }
     
-    /* Sidebar styling */
-    .css-1d391kg {
-        background: var(--um-gray);
-    }
-    
-    .sidebar-header {
-        background: var(--um-blue);
-        color: var(--um-maize);
-        padding: 1rem;
-        border-radius: 10px;
-        margin-bottom: 1rem;
-        text-align: center;
-    }
-    
-    /* Status indicators */
     .status-connected {
         background: #28a745;
         color: white;
@@ -275,133 +256,15 @@ st.markdown("""
         font-size: 0.9rem;
         margin: 0.5rem 0;
     }
-    
-    .status-ready {
-        background: var(--um-light-blue);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        display: inline-block;
-        font-size: 0.9rem;
-        margin: 0.5rem 0;
-    }
-    
-    /* Quick action buttons */
-    .quick-action {
-        background: white;
-        border: 2px solid var(--um-blue);
-        color: var(--um-blue);
-        border-radius: 20px;
-        padding: 0.75rem 1rem;
-        margin: 0.25rem 0;
-        font-size: 0.9rem;
-        transition: all 0.3s ease;
-    }
-    
-    .quick-action:hover {
-        background: var(--um-blue);
-        color: white;
-    }
-    
-    /* Capability cards */
-    .capability-card {
-        background: white;
-        border-left: 4px solid var(--um-maize);
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    
-    /* Chat messages */
-    .chat-message {
-        padding: 1rem;
-        margin: 1rem 0;
-        border-radius: 15px;
-        background: var(--um-gray);
-    }
-    
-    .user-message {
-        background: var(--um-blue);
-        color: white;
-        margin-left: 20%;
-    }
-    
-    .assistant-message {
-        background: white;
-        border: 2px solid var(--um-maize);
-        margin-right: 20%;
-    }
-    
-    /* Input styling */
-    .stTextInput > div > div > input {
-        border-radius: 25px;
-        border: 2px solid var(--um-blue);
-        padding: 0.75rem 1.5rem;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: var(--um-maize);
-        box-shadow: 0 0 0 0.2rem rgba(255, 203, 5, 0.25);
-    }
-    
-    /* Spinner styling */
-    .stSpinner > div {
-        border-top-color: var(--um-maize) !important;
-    }
-    
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        background: var(--um-blue);
-        color: var(--um-maize);
-        border-radius: 10px;
-    }
-    
-    /* Code blocks */
-    .stCodeBlock {
-        border-radius: 10px;
-        border: 1px solid var(--um-maize);
-    }
-    
-    /* Success/Error messages */
-    .stSuccess {
-        background: #d4edda;
-        border: 1px solid #c3e6cb;
-        color: #155724;
-        border-radius: 10px;
-    }
-    
-    .stError {
-        background: #f8d7da;
-        border: 1px solid #f5c6cb;
-        color: #721c24;
-        border-radius: 10px;
-    }
-    
-    /* University branding */
-    .um-logo {
-        width: 40px;
-        height: 40px;
-        background: var(--um-maize);
-        border-radius: 50%;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        color: var(--um-blue);
-        margin-right: 10px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Main header with U-M branding
 st.markdown("""
 <div class="main-header">
     <h1><img src="data:image/png;base64,{}" width="50" height="50" style="vertical-align: middle; margin-right: 15px;">UM API Assistant</h1>
 </div>
 """.format(get_base64_image("umich.png")), unsafe_allow_html=True)
 
-# API Configuration
 url = 'https://umgpt.umich.edu'
 project_pk = os.getenv("PROJECT_PK")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
@@ -418,10 +281,6 @@ if not project_pk:
 
 if "conversation_pk" not in st.session_state:
     st.session_state.conversation_pk = None
-
-# Initialize message history (always start blank)
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
 def create_conversation():
     headers = {
@@ -523,10 +382,6 @@ def display_formatted_response(response_text):
         components.html(copy_js, height=0)
         st.toast(" Copied!")
 
-# Main chat interface
-st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-
-# Display chat history
 assistant_avatar = get_base64_image("umich.png")
 for message in st.session_state.messages:
     if message["role"] == "assistant":
@@ -550,9 +405,7 @@ if 'auto_input' in st.session_state:
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # Save to Redis
-    save_chat_to_redis(get_session_id(), st.session_state.messages)
+    save_chat_to_redis(session_id, st.session_state.messages)
 
 if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -566,21 +419,12 @@ if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    # Save to Redis
-    save_chat_to_redis(get_session_id(), st.session_state.messages)
+    save_chat_to_redis(session_id, st.session_state.messages)
 
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Sidebar with U-M styling
 with st.sidebar:
-    umich_icon = get_base64_image("umich.png")
-    
     redis_client = get_redis_client()
     
-    # Connection Status
     if st.session_state.conversation_pk:
-        # st.caption(f" Conversation ID: {str(st.session_state.conversation_pk)[:12]}...")
         st.markdown('<div class="status-connected"> Connected to Maizey</div>', unsafe_allow_html=True)
         
     st.markdown("### System Configuration")
@@ -597,7 +441,7 @@ with st.sidebar:
             st.markdown(f"** Conversation ID:** `{str(st.session_state.conversation_pk)}`")
     
     st.divider()
-    # Action buttons
+    
     st.markdown("###  Quick Actions")
     col1, col2 = st.columns(2)
     
@@ -605,65 +449,63 @@ with st.sidebar:
         if st.button(" New Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.conversation_pk = None
-            st.session_state.session_id = str(uuid.uuid4())  # New session ID
+            st.session_state.session_id = str(uuid.uuid4())
             st.rerun()
     
     with col2:
-        if st.button(" Test API", use_container_width=True):
-            with st.spinner("Testing connection..."):
-                test_headers = {
-                    'accept': 'application/json',
-                    'Authorization': 'Bearer ' + ACCESS_TOKEN,
-                    'Content-Type': 'application/json'
-                }
-                test_url = f'{url}/maizey/api/projects/{project_pk}/conversation/'
-                
-                try:
-                    test_response = requests.post(test_url, headers=test_headers, json={})
-                    if test_response.status_code == 201:
-                        st.toast(" API Connected")
-                    else:
-                        st.toast(f"Status: {test_response.status_code}")
-                except Exception as e:
-                    st.toast(f"Connection Failed")
+        if st.button(" Test Redis", use_container_width=True):
+            success, message = test_redis_connection()
+            if success:
+                st.toast("✅ Redis Connected")
+            else:
+                st.toast("❌ Redis Failed")
     
+    st.divider()
     
-    # Chat History Section
     col1, col2 = st.columns([4, 1])
     with col1:
         st.markdown("### Chat History")
     with col2:
         if redis_client and get_chat_history_list():
-            if st.button("🗑️", help = "Clear all", use_container_width=True, type="secondary"):
-                if clear_all_chat_history():
-                    st.toast("✅ All chat history cleared!")
-                    st.rerun()
+            if st.button("🗑️", help="Clear all", use_container_width=True, type="secondary"):
+                if st.session_state.get('confirm_clear_all', False):
+                    if clear_all_chat_history():
+                        st.session_state.messages = []
+                        st.session_state.session_id = str(uuid.uuid4())
+                        st.session_state['confirm_clear_all'] = False
+                        st.toast("✅ All chat history cleared!")
+                        st.rerun()
+                    else:
+                        st.toast("❌ Failed to clear history")
                 else:
-                    st.toast("❌ Failed to clear history")
+                    st.session_state['confirm_clear_all'] = True
+                    st.toast("⚠️ Click again to confirm")
     
     if redis_client:
         chat_history = get_chat_history_list()
         
         if chat_history:
-            for chat in chat_history:
-                # Create compact chat history items
+            for i, chat in enumerate(chat_history):
                 chat_time = datetime.fromisoformat(chat['timestamp']).strftime("%m/%d")
                 
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    # Use smaller, more compact button style
                     button_text = f"{chat['title'][:20]}{'...' if len(chat['title']) > 20 else ''}"
                     if st.button(button_text, key=f"history_{chat['session_id']}", use_container_width=True, type="secondary"):
                         load_chat_history(chat['session_id'])
                 
                 with col2:
-                    with st.popover("⋯", use_container_width=True):
-                        if st.button("Delete", key=f"delete_{chat['session_id']}", use_container_width=True, type="secondary"):
+                    if st.button("🗑️", key=f"delete_{i}", help="Delete this chat", use_container_width=True):
+                        if st.session_state.get(f'confirm_delete_{i}', False):
                             if delete_specific_chat(chat['session_id']):
-                                st.toast("Chat deleted!")
+                                st.session_state[f'confirm_delete_{i}'] = False
+                                st.toast("✅ Chat deleted!")
                                 st.rerun()
                             else:
-                                st.toast("Failed to delete")
+                                st.toast("❌ Failed to delete")
+                        else:
+                            st.session_state[f'confirm_delete_{i}'] = True
+                            st.toast("⚠️ Click again to confirm")
         else:
             st.caption("No chat history yet")
     else:
@@ -671,7 +513,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Quick Examples
     st.markdown("### Try These Examples")
     examples = [
         "Find student info by uniqname",
@@ -689,27 +530,7 @@ with st.sidebar:
             st.rerun()
     
     st.divider()
-    # Maizey Capabilities
-    # st.markdown("### Maizey Capabilities")
-    # capabilities = [
-    #     "Student & Faculty Directory",
-    #     "Building & Room Information", 
-    #     "Course Data & Enrollment",
-    #     "API Endpoint Generation",
-    #     "Code Examples & Documentation",
-    #     "University Policies & Procedures"
-    # ]
     
-    # for capability in capabilities:
-    #     st.markdown(f"""
-    #     <div class="capability-card">
-    #         {capability}
-    #     </div>
-    #     """, unsafe_allow_html=True)
-    
-    # st.divider()
-    
-    # Footer
     st.markdown("""
     <div style="text-align: center; margin-top: 2rem; padding: 1rem; background: var(--um-blue); color: var(--um-maize); border-radius: 10px;">
         <strong>〽️ Go Blue!</strong><br>
