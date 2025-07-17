@@ -4,8 +4,17 @@ import os
 from dotenv import load_dotenv
 import time
 import re
+from datetime import datetime
+import uuid
 
 load_dotenv()
+
+st.set_page_config(
+    page_title="U-M Maizey Assistant", 
+    page_icon="🌽",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 st.title("🌽 University of Michigan API Assistant")
 st.write(
@@ -27,11 +36,75 @@ if not project_pk:
     st.info("💡 Your .env file should contain: PROJECT_PK=your_project_guid_here")
     st.stop()
 
-if "conversation_pk" not in st.session_state:
-    st.session_state.conversation_pk = None
+def initialize_session_state():
+    if "conversations" not in st.session_state:
+        st.session_state.conversations = {}
+    
+    if "current_conversation_id" not in st.session_state:
+        st.session_state.current_conversation_id = None
+    
+    if "conversation_pk" not in st.session_state:
+        st.session_state.conversation_pk = None
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    
+    if "user_stats" not in st.session_state:
+        st.session_state.user_stats = {
+            "total_conversations": 0,
+            "total_messages": 0,
+            "session_start": datetime.now()
+        }
 
-if "messages" not in st.session_state:
+def create_new_conversation():
+    conversation_id = str(uuid.uuid4())
+    st.session_state.conversations[conversation_id] = {
+        "id": conversation_id,
+        "title": "New Chat",
+        "created_at": datetime.now(),
+        "messages": [],
+        "maizey_conversation_pk": None
+    }
+    st.session_state.current_conversation_id = conversation_id
     st.session_state.messages = []
+    st.session_state.conversation_pk = None
+    st.session_state.user_stats["total_conversations"] += 1
+    return conversation_id
+
+def get_current_conversation():
+    if st.session_state.current_conversation_id:
+        return st.session_state.conversations.get(st.session_state.current_conversation_id)
+    return None
+
+def save_message_to_conversation(role, content):
+    current_conv = get_current_conversation()
+    if current_conv:
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now(),
+            "id": str(uuid.uuid4())
+        }
+        current_conv["messages"].append(message)
+        st.session_state.user_stats["total_messages"] += 1
+        
+        if role == "user" and current_conv["title"] == "New Chat":
+            current_conv["title"] = content[:50] + "..." if len(content) > 50 else content
+
+def load_conversation(conversation_id):
+    if conversation_id in st.session_state.conversations:
+        st.session_state.current_conversation_id = conversation_id
+        conv = st.session_state.conversations[conversation_id]
+        st.session_state.messages = [{"role": msg["role"], "content": msg["content"]} for msg in conv["messages"]]
+        st.session_state.conversation_pk = conv["maizey_conversation_pk"]
+
+def delete_conversation(conversation_id):
+    if conversation_id in st.session_state.conversations:
+        del st.session_state.conversations[conversation_id]
+        if st.session_state.current_conversation_id == conversation_id:
+            st.session_state.current_conversation_id = None
+            st.session_state.messages = []
+            st.session_state.conversation_pk = None
 
 def create_conversation():
     headers = {
@@ -47,7 +120,13 @@ def create_conversation():
         
         if response.status_code == 201:
             conversation_data = response.json()
-            return conversation_data["pk"]
+            pk = conversation_data["pk"]
+            
+            current_conv = get_current_conversation()
+            if current_conv:
+                current_conv["maizey_conversation_pk"] = pk
+            
+            return pk
         else:
             st.error(f"❌ Failed to create conversation. Status: {response.status_code}")
             st.error(f"Response: {response.text}")
@@ -122,11 +201,10 @@ def display_formatted_response(response_text):
         
         i += 1
 
-def stream_response(text):
-    words = text.split()
-    for i, word in enumerate(words):
-        yield word + (" " if i < len(words) - 1 else "")
-        time.sleep(0.03)
+initialize_session_state()
+
+if not st.session_state.current_conversation_id:
+    create_new_conversation()
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
@@ -137,6 +215,8 @@ for message in st.session_state.messages:
 
 if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
+    save_message_to_conversation("user", prompt)
+    
     with st.chat_message("user"):
         st.markdown(prompt)
 
@@ -147,21 +227,21 @@ if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
+    save_message_to_conversation("assistant", response)
 
 with st.sidebar:
     st.header("🌽 Maizey AI Assistant")
     
     if st.session_state.conversation_pk:
         st.success("✅ Connected")
-        st.caption(f"Conv ID: {st.session_state.conversation_pk}...")
+        st.caption(f"Conv ID: {st.session_state.conversation_pk}")
     else:
         st.info("🆕 Ready to Connect")
     
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 New Chat", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.conversation_pk = None
+            create_new_conversation()
             st.rerun()
     
     with col2:
@@ -183,6 +263,44 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"❌ Connection Failed")
     
+    st.subheader("💬 Chat History")
+    if st.session_state.conversations:
+        for conv_id, conv in sorted(st.session_state.conversations.items(), 
+                                  key=lambda x: x[1]["created_at"], reverse=True):
+            is_current = conv_id == st.session_state.current_conversation_id
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if st.button(
+                    f"{'🟢' if is_current else '💬'} {conv['title'][:30]}...",
+                    key=f"load_{conv_id}",
+                    use_container_width=True,
+                    disabled=is_current
+                ):
+                    load_conversation(conv_id)
+                    st.rerun()
+            
+            with col2:
+                if st.button("🗑️", key=f"del_{conv_id}", help="Delete conversation"):
+                    delete_conversation(conv_id)
+                    st.rerun()
+            
+            st.caption(f"{len(conv['messages'])} messages • {conv['created_at'].strftime('%m/%d %H:%M')}")
+    else:
+        st.info("No conversations yet")
+    
+    if st.button("🗑️ Clear All History", use_container_width=True):
+        st.session_state.conversations = {}
+        st.session_state.current_conversation_id = None
+        st.session_state.messages = []
+        st.session_state.conversation_pk = None
+        st.session_state.user_stats = {
+            "total_conversations": 0,
+            "total_messages": 0,
+            "session_start": datetime.now()
+        }
+        st.rerun()
+    
     st.divider()
     
     st.subheader("🔧 Configuration")
@@ -191,21 +309,6 @@ with st.sidebar:
         st.text(f"Project: {project_pk[:12]}...")
         st.text(f"Token: {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}")
         st.text(f"Status: {'🟢 Active' if st.session_state.conversation_pk else '🟡 Standby'}")
-    
-    st.divider()
-    
-    st.subheader("💡 Maizey Capabilities")
-    capabilities = [
-        "🔍 Student & Faculty Search",
-        "🏢 Building & Room Info", 
-        "📚 Course Data & Enrollment",
-        "🔗 API Endpoint Generation",
-        "💻 Code Examples (Python/JS)",
-        "📄 Documentation & Guides"
-    ]
-    
-    for capability in capabilities:
-        st.markdown(f"• {capability}")
     
     st.divider()
     
@@ -219,8 +322,10 @@ with st.sidebar:
     ]
     
     for example in examples:
-        if st.button(f"� {example}", key=f"ex_{hash(example)}", use_container_width=True):
+        if st.button(f"💡 {example}", key=f"ex_{hash(example)}", use_container_width=True):
             st.session_state.messages.append({"role": "user", "content": example})
+            save_message_to_conversation("user", example)
+            
             with st.chat_message("user"):
                 st.markdown(example)
             
@@ -230,4 +335,5 @@ with st.sidebar:
                 display_formatted_response(response)
             
             st.session_state.messages.append({"role": "assistant", "content": response})
+            save_message_to_conversation("assistant", response)
             st.rerun()
