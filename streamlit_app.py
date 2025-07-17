@@ -1,15 +1,26 @@
 import streamlit as st
+from PIL import Image
 import requests
 import os
 from dotenv import load_dotenv
 import re
+import base64
+import streamlit.components.v1 as components
 
+def get_base64_image(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+def create_favicon():
+    img = Image.open("umich.png")
+    img = img.resize((32, 32)) 
+    return img
+    
 load_dotenv()
 
 # Configure page
 st.set_page_config(
-    page_title="Maizey AI Assistant",
-    page_icon="〽️",
+    page_title="UM API Assistant",
+    page_icon=create_favicon(),
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,17 +44,17 @@ st.markdown("""
     
     /* Main container styling */
     .main-header {
-        background: linear-gradient(135deg, var(--um-blue) 0%, var(--um-light-blue) 100%);
-        padding: 2rem 1rem;
+        background: var(--um-blue);
+        padding: 0.1rem 2rem;
         border-radius: 15px;
         margin-bottom: 2rem;
         text-align: center;
-        box-shadow: 0 8px 32px rgba(0, 39, 76, 0.2);
+        box-shadow: 0 4px 15px rgba(0, 39, 76, 0.2);
     }
     
     .main-header h1 {
         color: var(--um-maize) !important;
-        font-size: 2.5rem;
+        font-size: 2rem;
         font-weight: 700;
         margin: 0;
         text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
@@ -57,13 +68,13 @@ st.markdown("""
     }
     
     /* Chat container styling */
-    .chat-container {
-        background: white;    
-        border-radius: 15px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-    }
+    # .chat-container {
+    #     background: white;    
+    #     border-radius: 15px;
+    #     padding: 1.5rem;
+    #     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    #     margin-bottom: 2rem;
+    # }
     
     /* Button styling */
     .stButton > button {
@@ -80,6 +91,7 @@ st.markdown("""
     
     .stButton > button:hover {
         background: #E6B800;
+        color: var(--um-blue) !important;
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 203, 5, 0.4);
     }
@@ -230,9 +242,9 @@ st.markdown("""
 # Main header with U-M branding
 st.markdown("""
 <div class="main-header">
-    <h1>〽️ Maizey AI Assistant</h1>
+    <h1><img src="data:image/png;base64,{}" width="50" height="50" style="vertical-align: middle; margin-right: 15px;">UM API Assistant</h1>
 </div>
-""", unsafe_allow_html=True)
+""".format(get_base64_image("umich.png")), unsafe_allow_html=True)
 
 # API Configuration
 url = 'https://umgpt.umich.edu'
@@ -343,24 +355,52 @@ def display_formatted_response(response_text):
             st.code(content, language='python', line_numbers=True)
         
         i += 1
+    
+    if st.button(" Copy Response", key=f"copy_{hash(response_text)}"):
+        copy_js = f"""
+        <script>
+        navigator.clipboard.writeText(`{response_text.replace('`', '\\`')}`).then(function() {{
+            console.log('Copied to clipboard');
+        }});
+        </script>
+        """
+        components.html(copy_js, height=0)
+        st.toast(" Copied!")
 
 # Main chat interface
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
 # Display chat history
+assistant_avatar = get_base64_image("umich.png")
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        if message["role"] == "assistant":
+    if message["role"] == "assistant":
+        with st.chat_message("assistant", avatar=f"data:image/png;base64,{assistant_avatar}"):
             display_formatted_response(message["content"])
-        else:
+    else:
+        with st.chat_message("user"):
             st.markdown(message["content"])
+
+if 'auto_input' in st.session_state:
+    prompt = st.session_state.auto_input
+    del st.session_state.auto_input
+    
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant", avatar=f"data:image/png;base64,{assistant_avatar}"):
+        with st.spinner("Maizey is thinking..."):
+            response = send_message_to_maizey(prompt)
+        display_formatted_response(response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": response})
 
 if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=f"data:image/png;base64,{assistant_avatar}"):
         with st.spinner("Maizey is thinking..."):
             response = send_message_to_maizey(prompt)
         
@@ -372,32 +412,34 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 # Sidebar with U-M styling
 with st.sidebar:
-    st.markdown("""
-    <div class="sidebar-header">
-        <div class="um-logo">M</div>
-        <strong>Maizey AI Assistant</strong>
-    </div>
-    """, unsafe_allow_html=True)
+    umich_icon = get_base64_image("umich.png")
+    # st.markdown(f"""
+    # <div class="sidebar-header">
+    #     <img src="data:image/png;base64,{umich_icon}" width="30" height="30" style="vertical-align: middle; margin-right: 10px;">
+    #     <strong>Maizey API Assistant!</strong>
+    # </div>
+    # """, unsafe_allow_html=True)
     
     # Connection Status
     if st.session_state.conversation_pk:
-        st.markdown('<div class="status-connected">🟢 Connected to Maizey</div>', unsafe_allow_html=True)
-        st.caption(f"🔗 Conversation ID: {str(st.session_state.conversation_pk)[:12]}...")
-    else:
-        st.markdown('<div class="status-ready">🟢 Ready to Connect</div>', unsafe_allow_html=True)
+        # st.caption(f" Conversation ID: {str(st.session_state.conversation_pk)[:12]}...")
+        st.markdown('<div class="status-connected"> Connected to Maizey</div>', unsafe_allow_html=True)
+        
+    # else:
+    #     st.markdown('<div class="status-ready"> Start a Conversation</div>', unsafe_allow_html=True)
     
     # Action buttons
     st.markdown("###  Quick Actions")
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🔄 New Chat", use_container_width=True):
+        if st.button(" New Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.conversation_pk = None
             st.rerun()
     
     with col2:
-        if st.button("🧪 Test API", use_container_width=True):
+        if st.button(" Test API", use_container_width=True):
             with st.spinner("Testing connection..."):
                 test_headers = {
                     'accept': 'application/json',
@@ -409,46 +451,26 @@ with st.sidebar:
                 try:
                     test_response = requests.post(test_url, headers=test_headers, json={})
                     if test_response.status_code == 201:
-                        st.success("🟢 API Connected")
+                        st.toast(" API Connected")
                     else:
-                        st.error(f"Status: {test_response.status_code}")
+                        st.toast(f"Status: {test_response.status_code}")
                 except Exception as e:
-                    st.error(f"Connection Failed")
+                    st.toast(f"Connection Failed")
     
     st.divider()
     
     # Configuration Details
-    st.markdown("### 🔧 System Configuration")
-    with st.expander("🔍 Connection Details", expanded=False):
+    st.markdown("### System Configuration")
+    with st.expander(" Connection Details", expanded=False):
         st.markdown(f"""
-        ** Endpoint:** `umgpt.umich.edu`  
-        ** Project:** `{project_pk[:12]}...`  
-        ** Token:** {'🟢 Valid' if ACCESS_TOKEN else 'Missing'}  
-        ** Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else 'Standby'}
+        **Endpoint:** `umgpt.umich.edu`  
+        **Project:** `{project_pk[:12]}...`  
+        **Token:** {' Valid' if ACCESS_TOKEN else 'Missing'}  
+        **Status:** {' Active Chat' if st.session_state.conversation_pk else 'Standby'}
         """)
         
         if st.session_state.conversation_pk:
             st.markdown(f"**🔗 Conversation ID:** `{str(st.session_state.conversation_pk)}`")
-    
-    st.divider()
-    
-    # Maizey Capabilities
-    st.markdown("### Maizey Capabilities")
-    capabilities = [
-        "Student & Faculty Directory",
-        "Building & Room Information", 
-        "Course Data & Enrollment",
-        "API Endpoint Generation",
-        "Code Examples & Documentation",
-        "University Policies & Procedures"
-    ]
-    
-    for capability in capabilities:
-        st.markdown(f"""
-        <div class="capability-card">
-            {capability}
-        </div>
-        """, unsafe_allow_html=True)
     
     st.divider()
     
@@ -466,15 +488,29 @@ with st.sidebar:
     
     for example in examples:
         if st.button(f" {example}", key=f"ex_{hash(example)}", use_container_width=True):
-            st.session_state.messages.append({"role": "user", "content": example})
-            
-            with st.spinner("〽️ Maizey is processing your request..."):
-                response = send_message_to_maizey(example)
-            
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.session_state['auto_input'] = example
             st.rerun()
     
     st.divider()
+    # Maizey Capabilities
+    # st.markdown("### Maizey Capabilities")
+    # capabilities = [
+    #     "Student & Faculty Directory",
+    #     "Building & Room Information", 
+    #     "Course Data & Enrollment",
+    #     "API Endpoint Generation",
+    #     "Code Examples & Documentation",
+    #     "University Policies & Procedures"
+    # ]
+    
+    # for capability in capabilities:
+    #     st.markdown(f"""
+    #     <div class="capability-card">
+    #         {capability}
+    #     </div>
+    #     """, unsafe_allow_html=True)
+    
+    # st.divider()
     
     # Footer
     st.markdown("""
