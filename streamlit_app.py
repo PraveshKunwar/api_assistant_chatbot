@@ -16,6 +16,12 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
 
+try:
+    import pyperclip
+    PYPERCLIP_AVAILABLE = True
+except ImportError:
+    PYPERCLIP_AVAILABLE = False
+
 load_dotenv()
 
 def get_session_id():
@@ -371,16 +377,29 @@ def display_formatted_response(response_text):
         
         i += 1
     
-    if st.button(" Copy Response", key=f"copy_{hash(response_text)}"):
-        copy_js = f"""
-        <script>
-        navigator.clipboard.writeText(`{response_text.replace('`', '\\`')}`).then(function() {{
-            console.log('Copied to clipboard');
-        }});
-        </script>
-        """
-        components.html(copy_js, height=0)
-        st.toast(" Copied!")
+    col1, col2 = st.columns([6, 1])
+    with col2:
+        copy_button_key = f"copy_{hash(response_text)}"
+        if st.button("📋 Copy", key=copy_button_key, help="Copy full response"):
+            if PYPERCLIP_AVAILABLE:
+                try:
+                    pyperclip.copy(response_text)
+                    st.success("✅ Copied!")
+                except:
+                    st.session_state[f'show_copy_{copy_button_key}'] = True
+            else:
+                st.session_state[f'show_copy_{copy_button_key}'] = True
+    
+    if st.session_state.get(f'show_copy_{copy_button_key}', False):
+        st.text_area(
+            "Copy this text:",
+            value=response_text,
+            height=60,
+            key=f"fallback_copy_{copy_button_key}"
+        )
+        if st.button("✖️ Close", key=f"close_{copy_button_key}"):
+            st.session_state[f'show_copy_{copy_button_key}'] = False
+            st.rerun()
 
 assistant_avatar = get_base64_image("umich.png")
 for message in st.session_state.messages:
