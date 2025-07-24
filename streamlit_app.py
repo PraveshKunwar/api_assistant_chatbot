@@ -550,6 +550,43 @@ with st.sidebar:
     
     st.divider()
     
+    st.markdown("### 🔗 Helpful Links")
+    
+    # API Directory
+    st.markdown("**📁 API Directory**")
+    st.markdown("🔗 [UMich API Directory](https://dir.api.it.umich.edu/)")
+    
+    # Additional Information
+    st.markdown("**📋 Additional Information**")
+    st.markdown("🔗 [Location Abbreviations](https://ro.umich.edu/calendars/schedule-classes/location-abbreviations)")
+    
+    # Error Code Explanations
+    st.markdown("**⚠️ Error Code Explanations**")
+    with st.expander("HTTP Status Codes", expanded=False):
+        st.markdown("""
+        **2xx Success Codes:**
+        - `200 OK` - Request successful
+        - `201 Created` - Resource created successfully
+        - `204 No Content` - Request successful, no content returned
+        
+        **4xx Client Errors:**
+        - `400 Bad Request` - Invalid request syntax
+        - `401 Unauthorized` - Authentication required
+        - `403 Forbidden` - Access denied
+        - `404 Not Found` - Resource not found
+        - `429 Too Many Requests` - Rate limit exceeded
+        
+        **5xx Server Errors:**
+        - `500 Internal Server Error` - Server encountered an error
+        - `502 Bad Gateway` - Invalid response from upstream server
+        - `503 Service Unavailable` - Server temporarily unavailable
+        """)
+    
+    # Additional resources
+    st.markdown("🔗 [MDN HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status)")
+    
+    st.divider()
+    
     st.markdown("""
     <div style="text-align: center; margin-top: 2rem; padding: 1rem; background: var(--um-blue); color: var(--um-maize); border-radius: 10px;">
         <strong>〽️ Go Blue!</strong><br>
