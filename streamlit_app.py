@@ -16,12 +16,6 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
 
-try:
-    import pyperclip
-    PYPERCLIP_AVAILABLE = True
-except ImportError:
-    PYPERCLIP_AVAILABLE = False
-
 load_dotenv()
 
 def get_session_id():
@@ -412,31 +406,23 @@ def display_formatted_response(response_text):
     col1, col2 = st.columns([6, 1])
     with col2:
         copy_key = f"copy_{hash(response_text)}"
-        if st.button("📋 Copy", key=copy_key, help="Copy full response to clipboard", use_container_width=True):
-            if PYPERCLIP_AVAILABLE:
-                try:
-                    pyperclip.copy(response_text)
-                    st.success("✅ Copied to clipboard!")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"❌ Copy failed: {str(e)}")
-                    st.session_state[f'show_fallback_{copy_key}'] = True
-            else:
-                st.warning("⚠️ pyperclip not available. Install with: pip install pyperclip")
-                st.session_state[f'show_fallback_{copy_key}'] = True
+        if st.button("📋 Copy", key=copy_key, help="Show text for copying", use_container_width=True):
+            st.session_state[f'show_copy_{copy_key}'] = True
     
-    if st.session_state.get(f'show_fallback_{copy_key}', False):
-        st.markdown("**Manual Copy (Fallback):**")
+    if st.session_state.get(f'show_copy_{copy_key}', False):
+        st.markdown("**📋 Copy Response:**")
         st.text_area(
-            "Select all and copy (Ctrl+A, Ctrl+C):",
+            "Select all text and copy (Ctrl+A, Ctrl+C):",
             value=response_text,
-            height=100,
-            key=f"fallback_area_{copy_key}",
-            help="pyperclip failed, copy manually from here"
+            height=120,
+            key=f"copy_area_{copy_key}",
+            help="Select all text in this box and copy manually"
         )
-        if st.button("❌ Close", key=f"close_{copy_key}"):
-            st.session_state[f'show_fallback_{copy_key}'] = False
-            st.rerun()
+        col_close1, col_close2 = st.columns([5, 1])
+        with col_close2:
+            if st.button("❌", key=f"close_{copy_key}", help="Close copy area"):
+                st.session_state[f'show_copy_{copy_key}'] = False
+                st.rerun()
     
     st.markdown("---")
 
