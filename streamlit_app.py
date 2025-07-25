@@ -492,19 +492,18 @@ with st.sidebar:
     if st.session_state.conversation_pk:
         st.markdown('<div class="status-connected">🟢 Connected to Maizey</div>', unsafe_allow_html=True)
     
-    st.markdown("### 🔗 Connection Details")
-    with st.expander("Developer Info", expanded=False):
-        st.markdown(f"""
-        **Endpoint:** `umgpt.umich.edu`  
-        **Project:** `{project_pk[:12]}...`  
-        **Token:** {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}  
-        **Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else '⏸️ Standby'}  
-        **Storage:** {'☁️ Redis' if redis_client else '💾 Session'}
-        """)
+    # st.markdown("### 🔗 Connection Details")
+    # with st.expander("Developer Info", expanded=False):
+    #    st.markdown(f"""
+    #    **Endpoint:** `umgpt.umich.edu`  
+    #    **Project:** `{project_pk[:12]}...`  
+    #    **Token:** {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}  
+    #    **Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else '⏸️ Standby'}  
+    #    **Storage:** {'☁️ Redis' if redis_client else '💾 Session'}
+    #    """)
         
-        if st.session_state.conversation_pk:
-            st.markdown(f"**Conversation ID:** `{str(st.session_state.conversation_pk)}`")
-    
+    #    if st.session_state.conversation_pk:
+    #        st.markdown(f"**Conversation ID:** `{str(st.session_state.conversation_pk)}`")
     st.divider()
     
     st.markdown("### ⚡ Quick Actions")
