@@ -219,11 +219,15 @@ st.markdown("""
     
     .main-header {
         background: var(--um-blue);
-        padding: 0.1rem 2rem;
+        padding: 0.8rem 2rem;
         border-radius: 15px;
         margin-bottom: 2rem;
         text-align: center;
         box-shadow: 0 4px 15px rgba(0, 39, 76, 0.2);
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        border: 2px solid var(--um-maize);
     }
     
     .main-header h1 {
@@ -261,6 +265,32 @@ st.markdown("""
         display: inline-block;
         font-size: 0.9rem;
         margin: 0.5rem 0;
+    }
+    
+    .warning-box {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 10px;
+        padding: 0.75rem;
+        margin: 1rem 0;
+        color: #856404;
+        font-size: 0.9rem;
+    }
+    
+    .copy-button {
+        background: var(--um-maize) !important;
+        color: var(--um-blue) !important;
+        border: 1px solid var(--um-blue) !important;
+        border-radius: 20px !important;
+        padding: 0.25rem 0.75rem !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+    }
+    
+    .copy-button:hover {
+        background: #E6B800 !important;
+        transform: translateY(-1px) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -377,29 +407,38 @@ def display_formatted_response(response_text):
         
         i += 1
     
+    st.markdown("---")
+    
     col1, col2 = st.columns([6, 1])
     with col2:
-        copy_button_key = f"copy_{hash(response_text)}"
-        if st.button("📋 Copy", key=copy_button_key, help="Copy full response"):
+        copy_key = f"copy_{hash(response_text)}"
+        if st.button("📋 Copy", key=copy_key, help="Copy full response to clipboard", use_container_width=True):
             if PYPERCLIP_AVAILABLE:
                 try:
                     pyperclip.copy(response_text)
-                    st.success("✅ Copied!")
-                except:
-                    st.session_state[f'show_copy_{copy_button_key}'] = True
+                    st.success("✅ Copied to clipboard!")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"❌ Copy failed: {str(e)}")
+                    st.session_state[f'show_fallback_{copy_key}'] = True
             else:
-                st.session_state[f'show_copy_{copy_button_key}'] = True
+                st.warning("⚠️ pyperclip not available. Install with: pip install pyperclip")
+                st.session_state[f'show_fallback_{copy_key}'] = True
     
-    if st.session_state.get(f'show_copy_{copy_button_key}', False):
+    if st.session_state.get(f'show_fallback_{copy_key}', False):
+        st.markdown("**Manual Copy (Fallback):**")
         st.text_area(
-            "Copy this text:",
+            "Select all and copy (Ctrl+A, Ctrl+C):",
             value=response_text,
-            height=60,
-            key=f"fallback_copy_{copy_button_key}"
+            height=100,
+            key=f"fallback_area_{copy_key}",
+            help="pyperclip failed, copy manually from here"
         )
-        if st.button("✖️ Close", key=f"close_{copy_button_key}"):
-            st.session_state[f'show_copy_{copy_button_key}'] = False
+        if st.button("❌ Close", key=f"close_{copy_key}"):
+            st.session_state[f'show_fallback_{copy_key}'] = False
             st.rerun()
+    
+    st.markdown("---")
 
 assistant_avatar = get_base64_image("umich.png")
 for message in st.session_state.messages:
@@ -443,96 +482,42 @@ if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."
 with st.sidebar:
     redis_client = get_redis_client()
     
+    st.markdown("""
+    <div class="warning-box">
+        <strong>⚠️ Important Notice:</strong><br>
+        Chat history is not permanently saved. Your conversation will be lost when you refresh the page or start a new session.
+    </div>
+    """, unsafe_allow_html=True)
+    
     if st.session_state.conversation_pk:
-        st.markdown('<div class="status-connected"> Connected to Maizey</div>', unsafe_allow_html=True)
-        
-    st.markdown("### System Configuration")
-    with st.expander(" Connection Details", expanded=False):
+        st.markdown('<div class="status-connected">🟢 Connected to Maizey</div>', unsafe_allow_html=True)
+    
+    st.markdown("### 🔗 Connection Details")
+    with st.expander("Developer Info", expanded=False):
         st.markdown(f"""
         **Endpoint:** `umgpt.umich.edu`  
         **Project:** `{project_pk[:12]}...`  
-        **Token:** {' Valid' if ACCESS_TOKEN else 'Missing'}  
-        **Status:** {' Active Chat' if st.session_state.conversation_pk else 'Standby'}  
-        **Storage:** {'Redis' if redis_client else '💾 Session'}
+        **Token:** {'✅ Valid' if ACCESS_TOKEN else '❌ Missing'}  
+        **Status:** {'🟢 Active Chat' if st.session_state.conversation_pk else '⏸️ Standby'}  
+        **Storage:** {'☁️ Redis' if redis_client else '💾 Session'}
         """)
         
         if st.session_state.conversation_pk:
-            st.markdown(f"** Conversation ID:** `{str(st.session_state.conversation_pk)}`")
+            st.markdown(f"**Conversation ID:** `{str(st.session_state.conversation_pk)}`")
     
     st.divider()
     
-    st.markdown("###  Quick Actions")
-    col1, col2 = st.columns(2)
+    st.markdown("### ⚡ Quick Actions")
     
-    with col1:
-        if st.button(" New Chat", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.conversation_pk = None
-            st.session_state.session_id = str(uuid.uuid4())
-            st.rerun()
-    
-    with col2:
-        if st.button(" Test Redis", use_container_width=True):
-            success, message = test_redis_connection()
-            if success:
-                st.toast("✅ Redis Connected")
-            else:
-                st.toast("❌ Redis Failed")
+    if st.button("🆕 New Chat", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.conversation_pk = None
+        st.session_state.session_id = str(uuid.uuid4())
+        st.rerun()
     
     st.divider()
     
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown("### Chat History")
-    with col2:
-        if redis_client and get_chat_history_list():
-            if st.button("🗑️", help="Clear all", use_container_width=True, type="secondary"):
-                if st.session_state.get('confirm_clear_all', False):
-                    if clear_all_chat_history():
-                        st.session_state.messages = []
-                        st.session_state.session_id = str(uuid.uuid4())
-                        st.session_state['confirm_clear_all'] = False
-                        st.toast("✅ All chat history cleared!")
-                        st.rerun()
-                    else:
-                        st.toast("❌ Failed to clear history")
-                else:
-                    st.session_state['confirm_clear_all'] = True
-                    st.toast("⚠️ Click again to confirm")
-    
-    if redis_client:
-        chat_history = get_chat_history_list()
-        
-        if chat_history:
-            for i, chat in enumerate(chat_history):
-                chat_time = datetime.fromisoformat(chat['timestamp']).strftime("%m/%d")
-                
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    button_text = f"{chat['title'][:20]}{'...' if len(chat['title']) > 20 else ''}"
-                    if st.button(button_text, key=f"history_{chat['session_id']}", use_container_width=True, type="secondary"):
-                        load_chat_history(chat['session_id'])
-                
-                with col2:
-                    if st.button("🗑️", key=f"delete_{i}", help="Delete this chat", use_container_width=True):
-                        if st.session_state.get(f'confirm_delete_{i}', False):
-                            if delete_specific_chat(chat['session_id']):
-                                st.session_state[f'confirm_delete_{i}'] = False
-                                st.toast("✅ Chat deleted!")
-                                st.rerun()
-                            else:
-                                st.toast("❌ Failed to delete")
-                        else:
-                            st.session_state[f'confirm_delete_{i}'] = True
-                            st.toast("⚠️ Click again to confirm")
-        else:
-            st.caption("No chat history yet")
-    else:
-        st.caption("Cloud storage not available")
-    
-    st.divider()
-    
-    st.markdown("### Try These Examples")
+    st.markdown("### 💡 Try These Examples")
     examples = [
         "Find student info by uniqname",
         "List rooms in Shapiro Library", 
@@ -544,7 +529,7 @@ with st.sidebar:
     ]
     
     for example in examples:
-        if st.button(f" {example}", key=f"ex_{hash(example)}", use_container_width=True):
+        if st.button(f"💬 {example}", key=f"ex_{hash(example)}", use_container_width=True):
             st.session_state['auto_input'] = example
             st.rerun()
     
@@ -552,15 +537,12 @@ with st.sidebar:
     
     st.markdown("### 🔗 Helpful Links")
     
-    # API Directory
     st.markdown("**📁 API Directory**")
     st.markdown("🔗 [UMich API Directory](https://dir.api.it.umich.edu/)")
     
-    # Additional Information
     st.markdown("**📋 Additional Information**")
     st.markdown("🔗 [Location Abbreviations](https://ro.umich.edu/calendars/schedule-classes/location-abbreviations)")
     
-    # Error Code Explanations
     st.markdown("**⚠️ Error Code Explanations**")
     with st.expander("HTTP Status Codes", expanded=False):
         st.markdown("""
@@ -582,7 +564,6 @@ with st.sidebar:
         - `503 Service Unavailable` - Server temporarily unavailable
         """)
     
-    # Additional resources
     st.markdown("🔗 [MDN HTTP Status Codes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status)")
     
     st.divider()
