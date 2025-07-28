@@ -222,14 +222,48 @@ st.markdown("""
         top: 0;
         z-index: 999;
         border: 2px solid var(--um-maize);
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
     
-    .main-header h1 {
-        color: var(--um-maize) !important;
-        font-size: 2rem;
-        font-weight: 700;
-        margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    .logo-desktop {
+        max-height: 80px;
+        height: auto;
+        max-width: 100%;
+        display: block;
+    }
+    
+    .logo-mobile {
+        max-height: 60px;
+        height: auto;
+        max-width: 100%;
+        display: none;
+    }
+    
+    /* Mobile responsive styles */
+    @media (max-width: 768px) {
+        .main-header {
+            padding: 0.5rem 1rem;
+        }
+        
+        .logo-desktop {
+            display: none;
+        }
+        
+        .logo-mobile {
+            display: block;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .main-header {
+            padding: 0.4rem 0.5rem;
+        }
+        
+        .logo-mobile {
+            max-height: 50px;
+        }
     }
     
     .stButton > button {
@@ -289,11 +323,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
+desktop_logo = get_base64_image("API_Directory_logo_draft.png")
+mobile_logo = get_base64_image("API_DIRectory_mobile_logo_draft.png")
+
+st.markdown(f"""
 <div class="main-header">
-    <h1><img src="data:image/png;base64,{}" width="50" height="50" style="vertical-align: middle; margin-right: 15px;">UM API Assistant</h1>
+    <img class="logo-desktop" src="data:image/png;base64,{desktop_logo}" alt="API Directory Logo">
+    <img class="logo-mobile" src="data:image/png;base64,{mobile_logo}" alt="API Directory Mobile Logo">
 </div>
-""".format(get_base64_image("umich.png")), unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 url = 'https://umgpt.umich.edu'
 project_pk = os.getenv("PROJECT_PK")
