@@ -1,0 +1,17 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: um-api-assistant
+  labels:
+    app.kubernetes.io/part-of: STREAMLIT-APPS
+    app: um-api-assistant
+spec:
+  to:
+    kind: Service
+    name: um-api-assistant
+    weight: 100
+  port:
+    targetPort: 8501
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

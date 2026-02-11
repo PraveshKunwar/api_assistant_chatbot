@@ -6,15 +6,7 @@ from dotenv import load_dotenv
 import re
 import base64
 import streamlit.components.v1 as components
-import json
 import uuid
-from datetime import datetime
-
-try:
-    import redis
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
 
 load_dotenv()
 
@@ -32,163 +24,10 @@ def create_favicon():
     img = img.resize((32, 32)) 
     return img
 
-def get_redis_client():
-    if not REDIS_AVAILABLE:
-        return None
-    
-    try:
-        redis_url = os.getenv('REDIS_URL')
-        if redis_url:
-            return redis.Redis.from_url(redis_url)
-        else:
-            return None
-    except Exception as e:
-        return None
-
-def test_redis_connection():
-    redis_client = get_redis_client()
-    if not redis_client:
-        return False, "Redis client not available"
-    
-    try:
-        test_key = f"test_{uuid.uuid4()}"
-        redis_client.set(test_key, "test_value")
-        result = redis_client.get(test_key)
-        redis_client.delete(test_key)
-        
-        if isinstance(result, bytes):
-            result = result.decode('utf-8')
-        
-        if result == "test_value":
-            return True, "Redis connection successful"
-        else:
-            return False, "Redis test failed"
-    except Exception as e:
-        return False, f"Redis error: {str(e)}"
-
-def save_chat_to_redis(conversation_id, messages):
-    if not conversation_id or not messages:
-        return
-        
-    redis_client = get_redis_client()
-    if not redis_client:
-        return
-    
-    try:
-        chat_data = {
-            'messages': messages,
-            'timestamp': datetime.now().isoformat(),
-            'conversation_id': conversation_id
-        }
-        redis_client.setex(
-            f"um_chat:{conversation_id}", 
-            604800, 
-            json.dumps(chat_data)
-        )
-    except Exception as e:
-        pass
-
-def load_chat_from_redis(conversation_id):
-    if not conversation_id:
-        return []
-        
-    redis_client = get_redis_client()
-    if not redis_client:
-        return []
-    
-    try:
-        data = redis_client.get(f"um_chat:{conversation_id}")
-        if data:
-            if isinstance(data, bytes):
-                data = data.decode('utf-8')
-            chat_data = json.loads(data)
-            return chat_data.get('messages', [])
-        return []
-    except Exception as e:
-        return []
-
-def get_chat_history_list():
-    redis_client = get_redis_client()
-    if not redis_client:
-        return []
-    
-    try:
-        keys = redis_client.keys("um_chat:*")
-        chat_list = []
-        
-        for key in keys:
-            try:
-                if isinstance(key, bytes):
-                    key = key.decode('utf-8')
-                data = redis_client.get(key)
-                if data:
-                    if isinstance(data, bytes):
-                        data = data.decode('utf-8')
-                    chat_data = json.loads(data)
-                    session_id = key.replace("um_chat:", "")
-                    timestamp = chat_data.get('timestamp', '')
-                    messages = chat_data.get('messages', [])
-                    
-                    if messages:
-                        first_user_msg = next((msg['content'] for msg in messages if msg['role'] == 'user'), 'New Chat')
-                        title = first_user_msg[:50] + "..." if len(first_user_msg) > 50 else first_user_msg
-                        
-                        chat_list.append({
-                            'session_id': session_id,
-                            'title': title,
-                            'timestamp': timestamp,
-                            'message_count': len(messages)
-                        })
-            except:
-                continue
-        
-        chat_list.sort(key=lambda x: x['timestamp'], reverse=True)
-        return chat_list[:10]
-    except Exception as e:
-        return []
-
-def load_chat_history(session_id):
-    messages = load_chat_from_redis(session_id)
-    if messages:
-        st.session_state.messages = messages
-        st.session_state.session_id = session_id
-        st.session_state.conversation_pk = None
-        st.rerun()
-
-def clear_all_chat_history():
-    redis_client = get_redis_client()
-    if not redis_client:
-        return False
-    
-    try:
-        keys = redis_client.keys("um_chat:*")
-        if keys:
-            for key in keys:
-                redis_client.delete(key)
-        return True
-    except Exception as e:
-        return False
-
-def delete_specific_chat(session_id):
-    redis_client = get_redis_client()
-    if not redis_client:
-        return False
-    
-    try:
-        redis_client.delete(f"um_chat:{session_id}")
-        return True
-    except Exception as e:
-        return False
-
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 
 session_id = get_session_id()
-
-if not st.session_state.messages:
-    saved_messages = load_chat_from_redis(session_id)
-    if saved_messages:
-        st.session_state.messages = saved_messages
 
 st.set_page_config(
     page_title="UM API Assistant",
@@ -487,7 +326,7 @@ if 'auto_input' in st.session_state:
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
-    save_chat_to_redis(session_id, st.session_state.messages)
+    
 
 if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -501,10 +340,10 @@ if prompt := st.chat_input("Ask Maizey anything about University of Michigan..."
         display_formatted_response(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
-    save_chat_to_redis(session_id, st.session_state.messages)
+    
 
 with st.sidebar:
-    redis_client = get_redis_client()
+    
     
     st.markdown("""
     <div class="warning-box">
